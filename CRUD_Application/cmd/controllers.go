@@ -41,7 +41,8 @@ func CreateProfile(w http.ResponseWriter, r *http.Request) {
 	var result primitive.M                                                                                    // une représentation non ordonnée d'un document BSON qui est une Map
 	err = userCollection.FindOne(context.TODO(), bson.D{{Key: "email", Value: person.Email}}).Decode(&result) // on cherche un document avec l'email donné
 	if err == nil {                                                                                           // si on trouve un document, on renvoie une erreur
-		fmt.Println("Erreur : l'email est déjà utilisé")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"Erreur": "Email déjà utilisé"}`))
 		return
 	}
 
@@ -79,9 +80,9 @@ func GetUserProfile(w http.ResponseWriter, r *http.Request) {
 	var result primitive.M
 	err := userCollection.FindOne(context.TODO(), bson.D{{Key: "email", Value: body.Email}}).Decode(&result)
 	if err != nil {
-
-		fmt.Println(err)
-
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"Erreur": "Email non trouvé"}`))
+		return
 	}
 	json.NewEncoder(w).Encode(result)
 
@@ -103,6 +104,23 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 
 		fmt.Print(e)
 	}
+
+	// Si l'email n'existe pas, on renvoie une erreur
+	var resultEmail primitive.M
+	err := userCollection.FindOne(context.TODO(), bson.D{{Key: "email", Value: body.Email}}).Decode(&resultEmail)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"Erreur": "Email non trouvé"}`))
+		return
+	}
+
+	// Si l'état est autre que true ou false, on renvoie une erreur
+	if body.State != true && body.State != false {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"Erreur": "Etat non valide"}`))
+		return
+	}
+
 	filter := bson.D{{Key: "email", Value: body.Email}} // on filtre sur l'email pour trouver l'utilisateur à modifier
 	after := options.After                              // on veut que le document soit retourné après la modification
 	returnOpt := options.FindOneAndUpdateOptions{
@@ -124,6 +142,15 @@ func DeleteProfile(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)["id"] // on récupère l'id de l'utilisateur à supprimer dans l'url
+
+	// Si l'id n'existe pas, on renvoie une erreur
+	var result primitive.M
+	err := userCollection.FindOne(context.TODO(), bson.D{{Key: "_id", Value: params}}).Decode(&result)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"Erreur": "Id non trouvé"}`))
+		return
+	}
 
 	_id, err := primitive.ObjectIDFromHex(params) // on convertit l'id en ObjectID
 	if err != nil {
