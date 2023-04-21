@@ -14,9 +14,11 @@ EXPOSE 8080
 
 FROM alpine:latest
 
-RUN mkdir -p /app/images
+RUN mkdir -p /app/images \
+    mkdir -p /app/html_pages
 
 COPY ./CRUD_Application/images /app/images
+COPY ./CRUD_Application/html_pages /app/html_pages
 
 WORKDIR /app
 COPY --from=builder /build/main .

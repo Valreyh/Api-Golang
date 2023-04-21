@@ -11,6 +11,7 @@ services:
       - db
     volumes:
       - ./CRUD_Application/images:/app/images 
+      - ./CRUD_Application/html_pages:/app/html_pages
   db:
     image: mongo
     container_name: mongodb

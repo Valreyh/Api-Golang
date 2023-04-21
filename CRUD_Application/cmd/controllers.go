@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -75,6 +76,57 @@ func CreateProfile(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("Création du profile : ", insertResult)
 	json.NewEncoder(w).Encode(insertResult.InsertedID) // on renvoie l'id du document créé (on peut envoyé autre chose si besoin)
+
+}
+
+func CreateHTLMPage(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var body user
+	err := json.NewDecoder(r.Body).Decode(&body)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	// On récupère les informations de l'utilisateur et on crée la page HTML
+	var user user
+	err = userCollection.FindOne(context.TODO(), bson.D{{Key: "email", Value: body.Email}}).Decode(&user)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"Erreur": "Email non trouvé"}`))
+		return
+	}
+
+	// On crée le fichier HTML
+	file, err := os.Create("./html_pages/" + user.Email + ".html")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	// Convertir le tableau d'octets en une chaîne de caractères base64
+	pictureBase64 := base64.StdEncoding.EncodeToString(user.Picture.Data)
+
+	// On détermine le type d'image en fonction de l'extension de fichier
+	var imgType string
+	switch user.Picture.Extension {
+	case "jpg", "jpeg":
+		imgType = "image/jpeg"
+	case "png":
+		imgType = "image/png"
+	}
+
+	// On écrit le contenu du fichier HTML en utilisant le type d'image déterminé
+	_, err = io.WriteString(file, "<html><head><title>Page de profil</title></head><body><h1>Page de profil</h1><p>Email : "+user.Email+"</p><p>Etat : "+fmt.Sprint(user.State)+"</p><p>Type d'utilisateur : "+fmt.Sprint(user.UserType)+"</p><img src='data:"+imgType+";base64,"+pictureBase64+"' /></body></html>")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// On met un message de succès
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"Message": "Fichier HTML créer avec succès, dans le répertoir html_pages"}`))
 
 }
 
