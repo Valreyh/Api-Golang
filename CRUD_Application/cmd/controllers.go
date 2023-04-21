@@ -101,38 +101,6 @@ func GetUserProfile(w http.ResponseWriter, r *http.Request) {
 
 }
 
-// Récupération de l'image d'un utilisateur avec son email
-func GetProfileImage(w http.ResponseWriter, r *http.Request) {
-
-	w.Header().Set("Content-Type", "application/json")
-
-	var body user
-	e := json.NewDecoder(r.Body).Decode(&body)
-	if e != nil {
-
-		fmt.Print(e)
-	}
-
-	var resultEmail primitive.M
-	err := userCollection.FindOne(context.TODO(), bson.D{{Key: "email", Value: body.Email}}).Decode(&resultEmail)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"Erreur": "Email non trouvé"}`))
-		return
-	}
-
-	// On récupère l'image de l'utilisateur
-
-	var resultImage primitive.M
-	err = userCollection.FindOne(context.TODO(), bson.D{{Key: "email", Value: body.Email}}).Decode(&resultImage)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"Erreur": "Email non trouvé"}`))
-		return
-	}
-
-}
-
 // Update d'un utilisateur sur son état
 
 func UpdateProfile(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +202,7 @@ func UploadProfileImage(w http.ResponseWriter, r *http.Request) {
 		Data:      imageBytes,
 		Extension: fileExtension,
 		Type: primitive.Binary{
-			Subtype: 0x00, // subtype générique
+			Subtype: 0x00,
 			Data:    imageBytes,
 		},
 	}
@@ -272,7 +240,7 @@ func UploadProfileImage(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"Message": "Image envoyée"}`))
 }
 
-func GetProfileImage2(w http.ResponseWriter, r *http.Request) {
+func GetProfileImage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	type response struct {
