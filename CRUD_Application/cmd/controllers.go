@@ -4,8 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
@@ -16,11 +22,18 @@ import (
 
 // Struct des user
 type user struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Picture  string `json:"picture"`
-	State    bool   `json:"state"`
-	UserType int    `json:"userType"`
+	Email    string      `json:"email"`
+	Password string      `json:"password"`
+	Picture  ImageBinary `json:"picture"`
+	State    bool        `json:"state"`
+	UserType int         `json:"userType"`
+}
+
+// Définition d'un nouveau type pour représenter l'image sous forme de données binaires
+type ImageBinary struct {
+	Data      []byte           `bson:"data"`      // les données binaires de l'image
+	Type      primitive.Binary `bson:"type"`      // le type de données de l'image
+	Extension string           `bson:"extension"` // l'extension de l'image
 }
 
 var userCollection = db().Database("goDatabaseCrud").Collection("users")
@@ -60,7 +73,7 @@ func CreateProfile(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(err)
 	}
 
-	fmt.Println("Inserted a single document: ", insertResult)
+	fmt.Println("Création du profile : ", insertResult)
 	json.NewEncoder(w).Encode(insertResult.InsertedID) // on renvoie l'id du document créé (on peut envoyé autre chose si besoin)
 
 }
@@ -85,6 +98,38 @@ func GetUserProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	json.NewEncoder(w).Encode(result)
+
+}
+
+// Récupération de l'image d'un utilisateur avec son email
+func GetProfileImage(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var body user
+	e := json.NewDecoder(r.Body).Decode(&body)
+	if e != nil {
+
+		fmt.Print(e)
+	}
+
+	var resultEmail primitive.M
+	err := userCollection.FindOne(context.TODO(), bson.D{{Key: "email", Value: body.Email}}).Decode(&resultEmail)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"Erreur": "Email non trouvé"}`))
+		return
+	}
+
+	// On récupère l'image de l'utilisateur
+
+	var resultImage primitive.M
+	err = userCollection.FindOne(context.TODO(), bson.D{{Key: "email", Value: body.Email}}).Decode(&resultImage)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"Erreur": "Email non trouvé"}`))
+		return
+	}
 
 }
 
@@ -134,6 +179,166 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	_ = updateResult.Decode(&result)
 
 	json.NewEncoder(w).Encode(result)
+}
+
+func UploadProfileImage(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Content-Type", "multipart/form-data")
+
+	// Parse le corps de la requête pour récupérer le formulaire multipart
+	err := r.ParseMultipartForm(16 << 20) // taille maximale du fichier : 16 Mo
+	if err != nil {
+		http.Error(w, "Erreur lors de la lecture du formulaire", http.StatusBadRequest)
+		return
+	}
+
+	// On lit le fichier image envoyé
+	file, handler, err := r.FormFile("image")
+	if err != nil {
+		fmt.Println("Erreur : recupération du fichier impossible")
+		fmt.Println(err)
+		return
+	}
+	defer file.Close()
+
+	// On vérifie que le fichier est bien une image
+	if handler.Header.Get("Content-Type") != "image/jpeg" && handler.Header.Get("Content-Type") != "image/png" && handler.Header.Get("Content-Type") != "image/jpg" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"Erreur": "Le fichier n'est pas une image"}`))
+		return
+	}
+
+	// Lire les bytes de l'image
+	var imageBytes []byte
+	buf := make([]byte, 1024) // créer un tampon de 1 Ko pour lire les données du fichier par morceaux
+	for {
+		n, err := file.Read(buf)
+		if err != nil && err != io.EOF {
+			fmt.Println("Erreur : lecture des bytes de l'image impossible")
+			fmt.Println(err)
+			return
+		}
+		if n == 0 {
+			break
+		}
+		imageBytes = append(imageBytes, buf[:n]...)
+	}
+
+	fileName := handler.Filename
+	fileExtension := filepath.Ext(fileName)
+
+	fmt.Println("Extension  : ", fileExtension)
+
+	// Créer un nouveau document ImageBinary avec les données de l'image
+	imageBinary := ImageBinary{
+		Data:      imageBytes,
+		Extension: fileExtension,
+		Type: primitive.Binary{
+			Subtype: 0x00, // subtype générique
+			Data:    imageBytes,
+		},
+	}
+
+	fmt.Println("L'extension de l'image qu'on veut enregistrer est : ", imageBinary.Extension)
+
+	// On récupère l'email de l'utilisateur
+	email := r.FormValue("email")
+	// Si l'email n'existe pas dans userCollection, on renvoie une erreur
+	var resultEmail primitive.M
+	err = userCollection.FindOne(context.TODO(), bson.D{{Key: "email", Value: email}}).Decode(&resultEmail)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"Erreur": "Email non trouvé"}`))
+		return
+	}
+
+	// On met à jour l'image de l'utilisateur
+	filter := bson.D{{Key: "email", Value: email}} // on filtre sur l'email pour trouver l'utilisateur à modifier
+	after := options.After                         // on veut que le document soit retourné après la modification
+	returnOpt := options.FindOneAndUpdateOptions{
+
+		ReturnDocument: &after,
+	}
+
+	update := bson.D{{Key: "$set", Value: bson.D{{Key: "picture", Value: imageBinary}}}} // on met à jour l'image de l'utilisateur
+	updateResult := userCollection.FindOneAndUpdate(context.TODO(), filter, update, &returnOpt)
+
+	var result primitive.M
+	_ = updateResult.Decode(&result)
+
+	// on envoie un message de succès
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"Message": "Image envoyée"}`))
+}
+
+func GetProfileImage2(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	type response struct {
+		Email string `json:"email"`
+	}
+
+	// Récupérer l'email de l'utilisateur
+	var body response
+	err := json.NewDecoder(r.Body).Decode(&body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"Erreur": "Email non trouvé"}`))
+		return
+	}
+
+	email := body.Email
+
+	// Rechercher l'utilisateur dans la base de données
+	var user user
+	filter := bson.D{{Key: "email", Value: email}}
+	err = userCollection.FindOne(context.TODO(), filter).Decode(&user)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"Erreur": "Utilisateur non trouvé"}`))
+		return
+	}
+
+	// Récupérer les données d'image
+	imageBinary := user.Picture
+	imageBytes := imageBinary.Data
+
+	// Récupérer l'extension du fichier
+	fileExtension := imageBinary.Extension
+	fmt.Println("Extension du fichier image à charger :", fileExtension)
+
+	// Créer le nom du fichier
+	fileName := fmt.Sprintf("%s-%d.%s", strings.Replace(email, "@", "_", -1), time.Now().Unix(), fileExtension)
+	cleanFileName := filepath.Clean(fileName)
+
+	// Créer le fichier dans l'arborescence du projet
+	filePath := path.Join("./images", cleanFileName) // Chemin du fichier dans l'arborescence du projet
+	fmt.Println("Chemin du dossier images :", path.Dir(filePath))
+
+	// Créer le fichier
+	file, err := os.Create(filePath)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"Erreur": "Impossible de créer le fichier d'image"}`))
+		fmt.Println(err)
+		return
+	}
+	defer file.Close()
+
+	// Écrire les données d'image dans le fichier
+	_, err = file.Write(imageBytes)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"Erreur": "Impossible d'écrire les données d'image dans le fichier"}`))
+		fmt.Println(err)
+		return
+	}
+
+	// On met un message de succès
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"Message": "Image créée"}`))
 }
 
 // Suppression d'un utilisateur

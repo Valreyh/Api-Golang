@@ -9,8 +9,6 @@ import (
 
 func main() {
 	// on se connecte à la base de données
-	log.Println("On se connecte à la base de données")
-	db()
 
 	route := mux.NewRouter()
 	log.Println("On créer le routeur")
@@ -22,6 +20,8 @@ func main() {
 	s.HandleFunc("/getUserProfile", GetUserProfile).Methods("POST")
 	s.HandleFunc("/updateProfile", UpdateProfile).Methods("PUT")
 	s.HandleFunc("/deleteProfile/{id}", DeleteProfile).Methods("DELETE")
+	s.HandleFunc("/uploadProfileImage", UploadProfileImage).Methods("POST")
+	s.HandleFunc("/getProfileImage", GetProfileImage2).Methods("POST")
 
 	log.Println("On lance le serveur sur le port 8080")
 	log.Fatal(http.ListenAndServe(":8080", s)) // on lance le serveur sur le port 8080

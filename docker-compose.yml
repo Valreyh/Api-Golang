@@ -5,16 +5,17 @@ services:
       context: .
       dockerfile: ./CRUD_Application/Dockerfile
     container_name: crud_service
-    tty: true
     ports:
       - 8080:8080
     depends_on:
       - db
+    volumes:
+      - ./CRUD_Application/images:/app/images 
   db:
     image: mongo
     container_name: mongodb
     ports:
-      - "27017:27017"
+      - 27017:27017
     volumes:
       - C:\MongoDBFiles\CRUD_Appli:/data/db
     restart: always
