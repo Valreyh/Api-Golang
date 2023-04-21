@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,8 +10,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
-	"time"
 
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
@@ -105,20 +102,8 @@ func CreateHTLMPage(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Convertir le tableau d'octets en une chaîne de caractères base64
-	pictureBase64 := base64.StdEncoding.EncodeToString(user.Picture.Data)
-
-	// On détermine le type d'image en fonction de l'extension de fichier
-	var imgType string
-	switch user.Picture.Extension {
-	case "jpg", "jpeg":
-		imgType = "image/jpeg"
-	case "png":
-		imgType = "image/png"
-	}
-
-	// On écrit le contenu du fichier HTML en utilisant le type d'image déterminé
-	_, err = io.WriteString(file, "<html><head><title>Page de profil</title></head><body><h1>Page de profil</h1><p>Email : "+user.Email+"</p><p>Etat : "+fmt.Sprint(user.State)+"</p><p>Type d'utilisateur : "+fmt.Sprint(user.UserType)+"</p><img src='data:"+imgType+";base64,"+pictureBase64+"' /></body></html>")
+	// On écrit le contenu du fichier HTML
+	_, err = io.WriteString(file, "<html><head><title>Page de profil</title></head><body><h1>Page de profil</h1><p>Email : "+user.Email+"</p><p>Etat : "+fmt.Sprint(user.State)+"</p><p>Type d'utilisateur : "+fmt.Sprint(user.UserType)+"</p><img src='../images/"+user.Email+user.Picture.Extension+"' /></body></html>")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -329,7 +314,7 @@ func GetProfileImage(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Extension du fichier image à charger :", fileExtension)
 
 	// Créer le nom du fichier
-	fileName := fmt.Sprintf("%s-%d.%s", strings.Replace(email, "@", "_", -1), time.Now().Unix(), fileExtension)
+	fileName := user.Email + fileExtension
 	cleanFileName := filepath.Clean(fileName)
 
 	// Créer le fichier dans l'arborescence du projet
