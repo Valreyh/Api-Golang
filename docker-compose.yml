@@ -5,18 +5,49 @@ services:
       context: .
       dockerfile: ./CRUD_Application/Dockerfile
     container_name: crud_service
+    restart: always
     ports:
       - 8080:8080
     depends_on:
-      - db
+      - cockroach
     volumes:
       - ./CRUD_Application/images:/app/images 
       - ./CRUD_Application/html_pages:/app/html_pages
-  db:
+    networks:
+      - my-network
+  mongo:
     image: mongo
     container_name: mongodb
     ports:
-      - 27017:27017
+       - 27017:27017
     volumes:
       - C:\MongoDBFiles\CRUD_Appli:/data/db
     restart: always
+    networks:
+      - my-network
+  scylla:
+    image: scylladb/scylla
+    container_name: scylladb
+    ports:
+      - 9042:9042
+    restart: always
+    networks:
+      - my-network
+  cockroach:
+    image: cockroachdb/cockroach
+    container_name: cockroachdb
+    command: start-single-node --insecure 
+    ports:
+      - 26257:26257
+      - 8081:8081
+    restart: always
+    volumes:
+      - C:\CockroachDBFiles:/cockroach/cockroach-data
+    networks:
+      - my-network
+    environment:
+      - POSTGRES_USER=root      
+      - POSTGRES_PASSWORD=toto
+networks:
+  my-network:
+    driver: bridge
